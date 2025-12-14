@@ -228,6 +228,19 @@ namespace SM
          */
         bool IsInitialized() const { return m_Initialized; }
 
+        /**
+         * @brief Get the native command list for external rendering
+         * @return Native DX12 command list, nullptr if not recording
+         * @note Only valid between BeginFrame and EndFrame
+         */
+        ID3D12GraphicsCommandList* GetCommandList() const { return m_CommandList.GetNative(); }
+
+        /**
+         * @brief Get the command list wrapper
+         * @return Reference to command list wrapper
+         */
+        CommandList& GetCommandListWrapper() { return m_CommandList; }
+
     private:
         /**
          * @brief Create shaders

@@ -105,6 +105,12 @@ target_sources(ShatteredMoonCore PRIVATE
     src/pcg/FBM.cpp
     src/pcg/HeightmapGenerator.cpp
     src/pcg/Biome.cpp
+    src/pcg/Chunk.cpp
+    src/pcg/TerrainLOD.cpp
+    src/pcg/ChunkManager.cpp
+
+    # Terrain Renderer
+    src/renderer/TerrainRenderer.cpp
 )
 
 target_include_directories(ShatteredMoonCore PUBLIC

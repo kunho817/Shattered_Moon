@@ -11,6 +11,13 @@
 #include <memory>
 #include <string>
 #include <chrono>
+#include <DirectXMath.h>
+
+namespace PCG
+{
+    class ChunkManager;
+    class TerrainRenderer;
+}
 
 namespace SM
 {
@@ -214,6 +221,23 @@ namespace SM
          */
         void TestPCG();
 
+        /**
+         * @brief Initialize terrain system
+         * @return true if successful
+         */
+        bool InitializeTerrain();
+
+        /**
+         * @brief Update terrain system (chunk loading/unloading)
+         * @param cameraPosition Current camera position
+         */
+        void UpdateTerrain(const DirectX::XMFLOAT3& cameraPosition);
+
+        /**
+         * @brief Render procedural terrain
+         */
+        void RenderTerrain();
+
     private:
         // Engine state
         bool m_IsRunning = false;
@@ -232,6 +256,11 @@ namespace SM
         std::unique_ptr<Window> m_Window;
         std::unique_ptr<World> m_World;
         std::unique_ptr<Renderer> m_Renderer;
+
+        // Terrain systems
+        std::unique_ptr<PCG::ChunkManager> m_ChunkManager;
+        std::unique_ptr<PCG::TerrainRenderer> m_TerrainRenderer;
+        bool m_TerrainEnabled = true;
 
         // Configuration
         EngineConfig m_Config;

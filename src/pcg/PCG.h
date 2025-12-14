@@ -15,6 +15,9 @@
 #include "FBM.h"
 #include "HeightmapGenerator.h"
 #include "Biome.h"
+#include "Chunk.h"
+#include "TerrainLOD.h"
+#include "ChunkManager.h"
 
 /**
  * @namespace PCG

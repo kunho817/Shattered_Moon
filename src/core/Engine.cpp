@@ -5,6 +5,7 @@
 #include "core/FileSystem.h"
 #include "ecs/ECS.h"
 #include "renderer/Renderer.h"
+#include "renderer/TerrainRenderer.h"
 #include "pcg/PCG.h"
 
 #include <iostream>
@@ -69,6 +70,14 @@ namespace SM
         {
             std::cerr << "[Engine] Failed to initialize DX12 renderer" << std::endl;
             return false;
+        }
+
+        // Initialize Terrain System
+        if (!InitializeTerrain())
+        {
+            std::cerr << "[Engine] Failed to initialize terrain system" << std::endl;
+            // Non-fatal: continue without terrain
+            m_TerrainEnabled = false;
         }
 
         // Initialize timing
@@ -139,7 +148,20 @@ namespace SM
 
         // Shutdown in reverse order of initialization
 
-        // Shutdown Renderer first (before window)
+        // Shutdown Terrain system first
+        if (m_TerrainRenderer)
+        {
+            m_TerrainRenderer->Shutdown();
+            m_TerrainRenderer.reset();
+        }
+
+        if (m_ChunkManager)
+        {
+            m_ChunkManager->Shutdown();
+            m_ChunkManager.reset();
+        }
+
+        // Shutdown Renderer (before window)
         if (m_Renderer)
         {
             m_Renderer->Shutdown();
@@ -231,8 +253,8 @@ namespace SM
         // Begin frame
         m_Renderer->BeginFrame();
 
-        // Clear render target with dark blue background
-        m_Renderer->Clear(0.1f, 0.1f, 0.2f, 1.0f);
+        // Clear render target with sky blue background
+        m_Renderer->Clear(0.4f, 0.6f, 0.9f, 1.0f);
 
         // Update per-frame constants
         m_Renderer->UpdateFrameConstants(m_TotalTime);
@@ -240,9 +262,16 @@ namespace SM
         // Set viewport
         m_Renderer->SetViewport(m_Renderer->GetWidth(), m_Renderer->GetHeight());
 
-        // TODO: Render ECS entities with MeshComponent and MaterialComponent
-        // For now, render a test scene with primitive meshes
-        RenderTestScene();
+        // Render procedural terrain if enabled
+        if (m_TerrainEnabled && m_ChunkManager && m_TerrainRenderer)
+        {
+            RenderTerrain();
+        }
+        else
+        {
+            // Fallback: render test scene with primitive meshes
+            RenderTestScene();
+        }
 
         // TODO: Render UI (ImGui)
 
@@ -927,6 +956,128 @@ namespace SM
         }
 
         std::cout << "\n=== PCG Test Complete ===" << std::endl;
+#endif
+    }
+
+    // ============================================================================
+    // Terrain System
+    // ============================================================================
+
+    bool Engine::InitializeTerrain()
+    {
+        if (!m_Renderer || !m_Renderer->IsInitialized())
+        {
+            std::cerr << "[Engine] Cannot initialize terrain: Renderer not ready" << std::endl;
+            return false;
+        }
+
+        std::cout << "[Engine] Initializing terrain system..." << std::endl;
+
+        // Create terrain renderer
+        m_TerrainRenderer = std::make_unique<PCG::TerrainRenderer>();
+        if (!m_TerrainRenderer->Initialize(*m_Renderer))
+        {
+            std::cerr << "[Engine] Failed to initialize terrain renderer" << std::endl;
+            return false;
+        }
+
+        // Configure terrain renderer
+        m_TerrainRenderer->SetHeightScale(50.0f);
+        m_TerrainRenderer->SetTextureScale(10.0f);
+        m_TerrainRenderer->SetFog(100.0f, 400.0f, DirectX::XMFLOAT4(0.6f, 0.75f, 0.9f, 1.0f));
+
+        // Create chunk manager
+        m_ChunkManager = std::make_unique<PCG::ChunkManager>();
+
+        // Configure chunk manager
+        PCG::ChunkManagerConfig chunkConfig;
+        chunkConfig.ViewDistance = 200.0f;
+        chunkConfig.UnloadDistance = 250.0f;
+        chunkConfig.MaxChunksPerFrame = 2;
+        chunkConfig.MaxMeshBuildsPerFrame = 4;
+
+        // Configure terrain generation settings
+        chunkConfig.TerrainSettings.Seed = 42;
+        chunkConfig.TerrainSettings.Width = PCG::Chunk::SIZE;
+        chunkConfig.TerrainSettings.Height = PCG::Chunk::SIZE;
+        chunkConfig.TerrainSettings.MinHeight = 0.0f;
+        chunkConfig.TerrainSettings.MaxHeight = 50.0f;
+        chunkConfig.TerrainSettings.Noise = PCG::FBMSettings::Terrain();
+        chunkConfig.TerrainSettings.Noise.Frequency = 0.01f;
+        chunkConfig.TerrainSettings.ApplyDomainWarp = true;
+        chunkConfig.TerrainSettings.WarpStrength = 0.2f;
+
+        if (!m_ChunkManager->Initialize(m_Renderer->GetCore(), chunkConfig))
+        {
+            std::cerr << "[Engine] Failed to initialize chunk manager" << std::endl;
+            return false;
+        }
+
+        // Force load initial chunks around origin
+        m_ChunkManager->ForceLoadAround(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f), 100.0f);
+
+        std::cout << "[Engine] Terrain system initialized successfully!" << std::endl;
+        std::cout << "[Engine] Initial chunks loaded: " << m_ChunkManager->GetLoadedChunkCount() << std::endl;
+
+        return true;
+    }
+
+    void Engine::UpdateTerrain(const DirectX::XMFLOAT3& cameraPosition)
+    {
+        if (!m_ChunkManager)
+        {
+            return;
+        }
+
+        m_ChunkManager->Update(cameraPosition);
+    }
+
+    void Engine::RenderTerrain()
+    {
+        if (!m_TerrainRenderer || !m_ChunkManager || !m_Renderer)
+        {
+            return;
+        }
+
+        // Animate camera to fly over terrain
+        float angle = m_TotalTime * 0.1f;
+        float radius = 80.0f;
+        float height = 30.0f + std::sin(m_TotalTime * 0.3f) * 10.0f;
+
+        Camera& camera = m_Renderer->GetCamera();
+        camera.Position = DirectX::XMFLOAT3(
+            std::cos(angle) * radius,
+            height,
+            std::sin(angle) * radius
+        );
+        camera.Target = DirectX::XMFLOAT3(0.0f, 10.0f, 0.0f);
+        camera.FarPlane = 500.0f;
+        m_Renderer->SetCamera(camera);
+
+        // Update terrain chunks based on camera position
+        UpdateTerrain(camera.Position);
+
+        // Calculate view-projection matrix
+        DirectX::XMMATRIX view = camera.GetViewMatrix();
+        DirectX::XMMATRIX proj = camera.GetProjectionMatrix(m_Renderer->GetAspectRatio());
+        DirectX::XMMATRIX viewProj = DirectX::XMMatrixMultiply(view, proj);
+
+        // Render terrain
+        m_TerrainRenderer->RenderTerrain(*m_ChunkManager, viewProj, camera.Position);
+
+#if defined(_DEBUG)
+        // Debug output (every 60 frames)
+        static int frameCounter = 0;
+        if (++frameCounter >= 60)
+        {
+            frameCounter = 0;
+            // Uncomment to see terrain stats:
+            // std::cout << "[Terrain] Chunks: " << m_ChunkManager->GetLoadedChunkCount()
+            //           << ", Pending: " << m_ChunkManager->GetPendingCount()
+            //           << ", Rendered: " << m_TerrainRenderer->GetRenderedChunkCount()
+            //           << ", Triangles: " << m_TerrainRenderer->GetRenderedTriangleCount()
+            //           << std::endl;
+        }
 #endif
     }
 
