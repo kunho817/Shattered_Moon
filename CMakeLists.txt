@@ -154,8 +154,12 @@ target_link_libraries(ShatteredMoon PRIVATE
 )
 
 # ============================================================================
-# Subdirectories (for future expansion)
+# Subdirectories
 # ============================================================================
+# Development Tools
+add_subdirectory(gendev)
+
+# Future expansion
 # add_subdirectory(src/ecs)
 # add_subdirectory(src/renderer)
 # add_subdirectory(src/pcg)
@@ -183,6 +187,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_target_properties(imgui PROPERTIES FOLDER "External")
 set_target_properties(ShatteredMoonCore PROPERTIES FOLDER "Engine")
 set_target_properties(ShatteredMoon PROPERTIES FOLDER "Engine")
+set_target_properties(gendev PROPERTIES FOLDER "Tools")
 
 # ============================================================================
 # Installation (optional)
