@@ -19,6 +19,14 @@ namespace PCG
     class TerrainRenderer;
 }
 
+// Forward declarations for gameplay systems
+namespace SM
+{
+    class GameCamera;
+    class FPSCameraController;
+    class OrbitCameraController;
+}
+
 namespace SM
 {
     // Forward declarations
@@ -238,6 +246,34 @@ namespace SM
          */
         void RenderTerrain();
 
+        /**
+         * @brief Initialize input system and bindings
+         */
+        void InitializeInput();
+
+        /**
+         * @brief Initialize camera system
+         */
+        void InitializeCamera();
+
+        /**
+         * @brief Update input and camera
+         * @param deltaTime Time since last frame
+         */
+        void UpdateInput(float deltaTime);
+
+        /**
+         * @brief Get the FPS camera controller
+         * @return Pointer to FPS camera controller (may be nullptr)
+         */
+        FPSCameraController* GetFPSController() const { return m_FPSController.get(); }
+
+        /**
+         * @brief Get the orbit camera controller
+         * @return Pointer to orbit camera controller (may be nullptr)
+         */
+        OrbitCameraController* GetOrbitController() const { return m_OrbitController.get(); }
+
     private:
         // Engine state
         bool m_IsRunning = false;
@@ -261,6 +297,12 @@ namespace SM
         std::unique_ptr<PCG::ChunkManager> m_ChunkManager;
         std::unique_ptr<PCG::TerrainRenderer> m_TerrainRenderer;
         bool m_TerrainEnabled = true;
+
+        // Camera systems
+        std::unique_ptr<GameCamera> m_GameCamera;
+        std::unique_ptr<FPSCameraController> m_FPSController;
+        std::unique_ptr<OrbitCameraController> m_OrbitController;
+        bool m_UseFPSCamera = true;  // Toggle between FPS and Orbit camera
 
         // Configuration
         EngineConfig m_Config;

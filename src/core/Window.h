@@ -5,6 +5,7 @@
  * @brief Win32 Window management
  *
  * Handles window creation, message processing, and basic rendering operations.
+ * Also forwards input events to the Input system.
  */
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -13,6 +14,7 @@
 
 #include <Windows.h>
 #include <string>
+#include <functional>
 
 namespace SM
 {
@@ -111,6 +113,15 @@ namespace SM
          */
         void ToggleFullscreen();
 
+        /**
+         * @brief Set resize callback
+         * @param callback Function to call on window resize
+         */
+        void SetResizeCallback(std::function<void(uint32_t, uint32_t)> callback)
+        {
+            m_ResizeCallback = callback;
+        }
+
     private:
         /**
          * @brief Register the window class
@@ -154,6 +165,9 @@ namespace SM
         // Window class name
         static constexpr const wchar_t* CLASS_NAME = L"ShatteredMoonWindowClass";
         static bool s_ClassRegistered;
+
+        // Callbacks
+        std::function<void(uint32_t, uint32_t)> m_ResizeCallback;
     };
 
 } // namespace SM

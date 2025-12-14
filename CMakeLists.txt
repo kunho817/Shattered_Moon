@@ -111,6 +111,12 @@ target_sources(ShatteredMoonCore PRIVATE
 
     # Terrain Renderer
     src/renderer/TerrainRenderer.cpp
+
+    # Gameplay (Input and Camera)
+    src/gameplay/Input.cpp
+    src/gameplay/InputAction.cpp
+    src/gameplay/Camera.cpp
+    src/gameplay/CameraController.cpp
 )
 
 target_include_directories(ShatteredMoonCore PUBLIC

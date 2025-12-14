@@ -7,6 +7,10 @@
 #include "renderer/Renderer.h"
 #include "renderer/TerrainRenderer.h"
 #include "pcg/PCG.h"
+#include "gameplay/Input.h"
+#include "gameplay/InputAction.h"
+#include "gameplay/Camera.h"
+#include "gameplay/CameraController.h"
 
 #include <iostream>
 #include <iomanip>
@@ -71,6 +75,12 @@ namespace SM
             std::cerr << "[Engine] Failed to initialize DX12 renderer" << std::endl;
             return false;
         }
+
+        // Initialize Input System
+        InitializeInput();
+
+        // Initialize Camera System
+        InitializeCamera();
 
         // Initialize Terrain System
         if (!InitializeTerrain())
@@ -226,6 +236,9 @@ namespace SM
 
     void Engine::Update(float deltaTime)
     {
+        // Update Input (must be first to capture this frame's input)
+        UpdateInput(deltaTime);
+
         // Update Resource Manager (process async loads)
         ResourceManager::Get().Update();
 
@@ -237,7 +250,6 @@ namespace SM
 
         // TODO: Update physics
         // TODO: Update audio
-        // TODO: Update input
 
         // Clear frame stack at end of frame
         MemoryManager::Get().ClearFrameStack();
@@ -1039,31 +1051,38 @@ namespace SM
             return;
         }
 
-        // Animate camera to fly over terrain
-        float angle = m_TotalTime * 0.1f;
-        float radius = 80.0f;
-        float height = 30.0f + std::sin(m_TotalTime * 0.3f) * 10.0f;
+        // Use GameCamera if available, otherwise fall back to Renderer's camera
+        Camera& rendererCamera = m_Renderer->GetCamera();
 
-        Camera& camera = m_Renderer->GetCamera();
-        camera.Position = DirectX::XMFLOAT3(
-            std::cos(angle) * radius,
-            height,
-            std::sin(angle) * radius
-        );
-        camera.Target = DirectX::XMFLOAT3(0.0f, 10.0f, 0.0f);
-        camera.FarPlane = 500.0f;
-        m_Renderer->SetCamera(camera);
+        if (m_GameCamera)
+        {
+            // Sync GameCamera to Renderer's Camera
+            DirectX::XMFLOAT3 pos = m_GameCamera->GetPositionXM();
+            Vector3 fwd = m_GameCamera->GetForward();
+
+            rendererCamera.Position = pos;
+            rendererCamera.Target = DirectX::XMFLOAT3(
+                pos.x + fwd.x,
+                pos.y + fwd.y,
+                pos.z + fwd.z
+            );
+            rendererCamera.FarPlane = m_GameCamera->GetFarZ();
+            rendererCamera.NearPlane = m_GameCamera->GetNearZ();
+            rendererCamera.FieldOfView = m_GameCamera->GetFOV() * 3.14159265358979323846f / 180.0f;
+        }
+
+        m_Renderer->SetCamera(rendererCamera);
 
         // Update terrain chunks based on camera position
-        UpdateTerrain(camera.Position);
+        UpdateTerrain(rendererCamera.Position);
 
         // Calculate view-projection matrix
-        DirectX::XMMATRIX view = camera.GetViewMatrix();
-        DirectX::XMMATRIX proj = camera.GetProjectionMatrix(m_Renderer->GetAspectRatio());
+        DirectX::XMMATRIX view = rendererCamera.GetViewMatrix();
+        DirectX::XMMATRIX proj = rendererCamera.GetProjectionMatrix(m_Renderer->GetAspectRatio());
         DirectX::XMMATRIX viewProj = DirectX::XMMatrixMultiply(view, proj);
 
         // Render terrain
-        m_TerrainRenderer->RenderTerrain(*m_ChunkManager, viewProj, camera.Position);
+        m_TerrainRenderer->RenderTerrain(*m_ChunkManager, viewProj, rendererCamera.Position);
 
 #if defined(_DEBUG)
         // Debug output (every 60 frames)
@@ -1079,6 +1098,121 @@ namespace SM
             //           << std::endl;
         }
 #endif
+    }
+
+    // ============================================================================
+    // Input System
+    // ============================================================================
+
+    void Engine::InitializeInput()
+    {
+        std::cout << "[Engine] Initializing input system..." << std::endl;
+
+        // Setup default input bindings
+        InputMapper::Get().SetupDefaultBindings();
+
+        std::cout << "[Engine] Input system initialized with default bindings" << std::endl;
+    }
+
+    // ============================================================================
+    // Camera System
+    // ============================================================================
+
+    void Engine::InitializeCamera()
+    {
+        std::cout << "[Engine] Initializing camera system..." << std::endl;
+
+        // Create game camera
+        m_GameCamera = std::make_unique<GameCamera>();
+
+        // Setup initial camera position
+        m_GameCamera->SetPosition(0.0f, 30.0f, -80.0f);
+        m_GameCamera->SetPerspective(45.0f, m_Renderer->GetAspectRatio(), 0.1f, 1000.0f);
+        m_GameCamera->LookAt(0.0f, 10.0f, 0.0f);
+
+        // Create FPS controller
+        m_FPSController = std::make_unique<FPSCameraController>(*m_GameCamera);
+        m_FPSController->SetMoveSpeed(20.0f);
+        m_FPSController->SetMouseSensitivity(0.15f);
+        m_FPSController->SetSprintMultiplier(2.5f);
+
+        // Create Orbit controller
+        m_OrbitController = std::make_unique<OrbitCameraController>(*m_GameCamera);
+        m_OrbitController->SetTarget(0.0f, 10.0f, 0.0f);
+        m_OrbitController->SetDistance(80.0f);
+        m_OrbitController->SetElevation(30.0f);
+        m_OrbitController->SetRotationSpeed(0.3f);
+        m_OrbitController->SetZoomSpeed(10.0f);
+
+        // Start with orbit camera with auto-rotation (similar to original behavior)
+        m_UseFPSCamera = false;
+        m_OrbitController->SetAutoRotate(true, 10.0f);
+
+        std::cout << "[Engine] Camera system initialized" << std::endl;
+        std::cout << "[Engine] Controls: Right-click to toggle mouse capture (FPS mode)" << std::endl;
+        std::cout << "[Engine] Controls: WASD to move, Mouse to look, Shift to sprint" << std::endl;
+    }
+
+    void Engine::UpdateInput(float deltaTime)
+    {
+        // Update input system at start of frame
+        Input::Get().Update();
+
+        // Toggle between FPS and Orbit camera with F2
+        Input& input = Input::Get();
+
+        if (input.IsKeyPressed(KeyCode::F2))
+        {
+            m_UseFPSCamera = !m_UseFPSCamera;
+            std::cout << "[Engine] Camera mode: " << (m_UseFPSCamera ? "FPS" : "Orbit") << std::endl;
+
+            // Disable auto-rotation when switching to FPS
+            if (m_UseFPSCamera && m_OrbitController)
+            {
+                m_OrbitController->SetAutoRotate(false);
+            }
+            else if (!m_UseFPSCamera && m_OrbitController)
+            {
+                // Enable auto-rotation for orbit camera
+                m_OrbitController->SetAutoRotate(true, 10.0f);
+            }
+
+            // Release mouse capture when switching modes
+            if (input.IsMouseCaptured())
+            {
+                input.SetMouseCapture(false);
+            }
+        }
+
+        // Update appropriate camera controller
+        if (m_UseFPSCamera && m_FPSController)
+        {
+            m_FPSController->Update(deltaTime);
+        }
+        else if (m_OrbitController)
+        {
+            m_OrbitController->Update(deltaTime);
+        }
+
+        // Update camera aspect ratio on window resize
+        if (m_GameCamera && m_Renderer)
+        {
+            m_GameCamera->SetAspectRatio(m_Renderer->GetAspectRatio());
+        }
+
+        // Handle Escape to release mouse capture or exit
+        if (input.IsKeyPressed(KeyCode::Escape))
+        {
+            if (input.IsMouseCaptured())
+            {
+                input.SetMouseCapture(false);
+            }
+            else
+            {
+                // Request shutdown if not capturing
+                RequestShutdown();
+            }
+        }
     }
 
 } // namespace SM

@@ -1,6 +1,12 @@
 #include "core/Window.h"
+#include "gameplay/Input.h"
 
 #include <stdexcept>
+#include <vector>
+#include <windowsx.h>  // For GET_X_LPARAM, GET_Y_LPARAM
+
+// Forward declare ImGui handler
+extern "C" LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace SM
 {
@@ -36,6 +42,17 @@ namespace SM
         {
             return false;
         }
+
+        // Set window handle for input system
+        Input::Get().SetWindowHandle(m_Handle);
+
+        // Register for raw mouse input
+        RAWINPUTDEVICE rid;
+        rid.usUsagePage = 0x01;  // HID_USAGE_PAGE_GENERIC
+        rid.usUsage = 0x02;      // HID_USAGE_GENERIC_MOUSE
+        rid.dwFlags = 0;
+        rid.hwndTarget = m_Handle;
+        RegisterRawInputDevices(&rid, 1, sizeof(rid));
 
         // Show and update window
         ShowWindow(m_Handle, SW_SHOW);
@@ -262,6 +279,15 @@ namespace SM
 
     LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam)
     {
+        // Let ImGui process messages first
+        if (ImGui_ImplWin32_WndProcHandler(m_Handle, msg, wParam, lParam))
+        {
+            return true;
+        }
+
+        // Get input system reference
+        Input& input = Input::Get();
+
         switch (msg)
         {
         case WM_DESTROY:
@@ -278,22 +304,119 @@ namespace SM
             m_Height = HIWORD(lParam);
             m_Minimized = (wParam == SIZE_MINIMIZED);
 
-            // TODO: Notify renderer of resize
+            // Notify via callback if set
+            if (m_ResizeCallback && m_Width > 0 && m_Height > 0)
+            {
+                m_ResizeCallback(static_cast<uint32_t>(m_Width), static_cast<uint32_t>(m_Height));
+            }
             return 0;
         }
 
+        // Keyboard input
         case WM_KEYDOWN:
-            if (wParam == VK_ESCAPE)
-            {
-                PostMessage(m_Handle, WM_CLOSE, 0, 0);
-                return 0;
-            }
+        case WM_SYSKEYDOWN:
+        {
+            // Forward to input system
+            input.ProcessKeyDown(static_cast<uint32_t>(wParam));
+
+            // Handle special keys
             if (wParam == VK_F11)
             {
                 ToggleFullscreen();
                 return 0;
             }
             break;
+        }
+
+        case WM_KEYUP:
+        case WM_SYSKEYUP:
+        {
+            input.ProcessKeyUp(static_cast<uint32_t>(wParam));
+            break;
+        }
+
+        // Mouse movement
+        case WM_MOUSEMOVE:
+        {
+            int x = GET_X_LPARAM(lParam);
+            int y = GET_Y_LPARAM(lParam);
+            input.ProcessMouseMove(x, y);
+            break;
+        }
+
+        // Mouse buttons
+        case WM_LBUTTONDOWN:
+            input.ProcessMouseButton(0, true);
+            break;
+        case WM_LBUTTONUP:
+            input.ProcessMouseButton(0, false);
+            break;
+        case WM_RBUTTONDOWN:
+            input.ProcessMouseButton(1, true);
+            break;
+        case WM_RBUTTONUP:
+            input.ProcessMouseButton(1, false);
+            break;
+        case WM_MBUTTONDOWN:
+            input.ProcessMouseButton(2, true);
+            break;
+        case WM_MBUTTONUP:
+            input.ProcessMouseButton(2, false);
+            break;
+        case WM_XBUTTONDOWN:
+        {
+            int button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4;
+            input.ProcessMouseButton(button, true);
+            break;
+        }
+        case WM_XBUTTONUP:
+        {
+            int button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4;
+            input.ProcessMouseButton(button, false);
+            break;
+        }
+
+        // Mouse wheel
+        case WM_MOUSEWHEEL:
+        {
+            float delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+            input.ProcessMouseWheel(delta);
+            break;
+        }
+
+        // Raw input (for mouse delta in captured mode)
+        case WM_INPUT:
+        {
+            UINT size = 0;
+            GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER));
+
+            if (size > 0)
+            {
+                std::vector<BYTE> rawdata(size);
+                if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, rawdata.data(), &size, sizeof(RAWINPUTHEADER)) == size)
+                {
+                    RAWINPUT* raw = reinterpret_cast<RAWINPUT*>(rawdata.data());
+                    if (raw->header.dwType == RIM_TYPEMOUSE)
+                    {
+                        input.ProcessRawMouseInput(raw->data.mouse.lLastX, raw->data.mouse.lLastY);
+                    }
+                }
+            }
+            break;
+        }
+
+        // Focus handling
+        case WM_KILLFOCUS:
+        {
+            // Release mouse capture when losing focus
+            if (input.IsMouseCaptured())
+            {
+                input.SetMouseCapture(false);
+            }
+            // Reset input state
+            input.Reset();
+            break;
+        }
 
         case WM_GETMINMAXINFO:
         {

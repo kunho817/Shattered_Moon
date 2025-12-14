@@ -8,6 +8,7 @@
  */
 
 #include <cmath>
+#include <DirectXMath.h>
 
 namespace SM
 {
@@ -28,7 +29,23 @@ namespace SM
         float z = 0.0f;
 
         Vector3() = default;
-        Vector3(float x, float y, float z) : x(x), y(y), z(z) {}
+        Vector3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
+        Vector3(const DirectX::XMFLOAT3& v) : x(v.x), y(v.y), z(v.z) {}
+
+        // DirectX conversion functions
+        DirectX::XMFLOAT3 ToXMFLOAT3() const { return DirectX::XMFLOAT3(x, y, z); }
+        DirectX::XMVECTOR ToXMVECTOR() const
+        {
+            DirectX::XMFLOAT3 f = ToXMFLOAT3();
+            return DirectX::XMLoadFloat3(&f);
+        }
+
+        static Vector3 FromXMVECTOR(DirectX::FXMVECTOR v)
+        {
+            DirectX::XMFLOAT3 f;
+            DirectX::XMStoreFloat3(&f, v);
+            return Vector3(f.x, f.y, f.z);
+        }
 
         // Basic operations
         Vector3 operator+(const Vector3& other) const
@@ -44,6 +61,11 @@ namespace SM
         Vector3 operator*(float scalar) const
         {
             return Vector3(x * scalar, y * scalar, z * scalar);
+        }
+
+        Vector3 operator/(float scalar) const
+        {
+            return Vector3(x / scalar, y / scalar, z / scalar);
         }
 
         Vector3& operator+=(const Vector3& other)
@@ -104,12 +126,20 @@ namespace SM
             );
         }
 
+        static Vector3 Lerp(const Vector3& a, const Vector3& b, float t)
+        {
+            return a + (b - a) * t;
+        }
+
         // Common vectors
         static Vector3 Zero() { return Vector3(0.0f, 0.0f, 0.0f); }
         static Vector3 One() { return Vector3(1.0f, 1.0f, 1.0f); }
         static Vector3 Up() { return Vector3(0.0f, 1.0f, 0.0f); }
+        static Vector3 Down() { return Vector3(0.0f, -1.0f, 0.0f); }
         static Vector3 Forward() { return Vector3(0.0f, 0.0f, 1.0f); }
+        static Vector3 Back() { return Vector3(0.0f, 0.0f, -1.0f); }
         static Vector3 Right() { return Vector3(1.0f, 0.0f, 0.0f); }
+        static Vector3 Left() { return Vector3(-1.0f, 0.0f, 0.0f); }
     };
 
     // ============================================================================
