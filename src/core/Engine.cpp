@@ -4,6 +4,7 @@
 #include "core/ResourceManager.h"
 #include "core/FileSystem.h"
 #include "ecs/ECS.h"
+#include "renderer/Renderer.h"
 
 #include <iostream>
 
@@ -61,12 +62,22 @@ namespace SM
         m_World = std::make_unique<World>();
         InitializeECS();
 
+        // Initialize DX12 Renderer
+        if (!InitializeRenderer())
+        {
+            std::cerr << "[Engine] Failed to initialize DX12 renderer" << std::endl;
+            return false;
+        }
+
         // Initialize timing
         m_StartTime = std::chrono::high_resolution_clock::now();
         m_LastFrameTime = m_StartTime;
 
         m_IsInitialized = true;
         m_IsRunning = true;
+
+        // Test renderer (debug builds only)
+        TestRenderer();
 
         return true;
     }
@@ -125,6 +136,13 @@ namespace SM
         }
 
         // Shutdown in reverse order of initialization
+
+        // Shutdown Renderer first (before window)
+        if (m_Renderer)
+        {
+            m_Renderer->Shutdown();
+            m_Renderer.reset();
+        }
 
         // Shutdown ECS
         if (m_World)
@@ -203,15 +221,125 @@ namespace SM
 
     void Engine::Render()
     {
-        // TODO: Begin frame (DX12)
-        // TODO: Render world
-        // TODO: Render UI (ImGui)
-        // TODO: End frame (DX12)
-
-        // For now, just clear the window with a color
-        if (m_Window)
+        if (!m_Renderer || !m_Renderer->IsInitialized())
         {
-            m_Window->Clear(0.1f, 0.1f, 0.2f); // Dark blue background
+            return;
+        }
+
+        // Begin frame
+        m_Renderer->BeginFrame();
+
+        // Clear render target with dark blue background
+        m_Renderer->Clear(0.1f, 0.1f, 0.2f, 1.0f);
+
+        // Update per-frame constants
+        m_Renderer->UpdateFrameConstants(m_TotalTime);
+
+        // Set viewport
+        m_Renderer->SetViewport(m_Renderer->GetWidth(), m_Renderer->GetHeight());
+
+        // TODO: Render ECS entities with MeshComponent and MaterialComponent
+        // For now, render a test scene with primitive meshes
+        RenderTestScene();
+
+        // TODO: Render UI (ImGui)
+
+        // End frame
+        m_Renderer->EndFrame();
+
+        // Present to screen
+        m_Renderer->Present();
+    }
+
+    void Engine::RenderTestScene()
+    {
+        if (!m_Renderer)
+        {
+            return;
+        }
+
+        // Animate camera
+        float angle = m_TotalTime * 0.3f;
+        Camera& camera = m_Renderer->GetCamera();
+        camera.Position = DirectX::XMFLOAT3(
+            sinf(angle) * 8.0f,
+            3.0f + sinf(m_TotalTime * 0.5f) * 1.0f,
+            cosf(angle) * 8.0f
+        );
+        camera.Target = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+        m_Renderer->SetCamera(camera);
+
+        // Draw a rotating cube at center
+        {
+            DirectX::XMMATRIX world = DirectX::XMMatrixRotationY(m_TotalTime * 0.5f);
+            MaterialData material = CreateColoredMaterial(0.2f, 0.4f, 0.8f);
+            material.Metallic = 0.3f;
+            material.Roughness = 0.5f;
+
+            Mesh* cube = m_Renderer->GetPrimitiveMesh(0); // Cube
+            if (cube)
+            {
+                m_Renderer->DrawMesh(*cube, material, world);
+            }
+        }
+
+        // Draw a sphere
+        {
+            DirectX::XMMATRIX world =
+                DirectX::XMMatrixScaling(0.8f, 0.8f, 0.8f) *
+                DirectX::XMMatrixTranslation(3.0f, 0.0f, 0.0f);
+            MaterialData material = CreateMetallicMaterial(0.8f, 0.2f, 0.2f, 0.8f, 0.2f);
+
+            Mesh* sphere = m_Renderer->GetPrimitiveMesh(1); // Sphere
+            if (sphere)
+            {
+                m_Renderer->DrawMesh(*sphere, material, world);
+            }
+        }
+
+        // Draw a plane (ground)
+        {
+            DirectX::XMMATRIX world =
+                DirectX::XMMatrixScaling(10.0f, 1.0f, 10.0f) *
+                DirectX::XMMatrixTranslation(0.0f, -1.5f, 0.0f);
+            MaterialData material = CreateColoredMaterial(0.3f, 0.3f, 0.3f);
+            material.Roughness = 0.9f;
+
+            Mesh* plane = m_Renderer->GetPrimitiveMesh(2); // Plane
+            if (plane)
+            {
+                m_Renderer->DrawMesh(*plane, material, world);
+            }
+        }
+
+        // Draw a cylinder
+        {
+            DirectX::XMMATRIX world =
+                DirectX::XMMatrixRotationX(m_TotalTime * 0.3f) *
+                DirectX::XMMatrixTranslation(-3.0f, 0.0f, 0.0f);
+            MaterialData material = CreateColoredMaterial(0.2f, 0.7f, 0.3f);
+            material.Metallic = 0.5f;
+            material.Roughness = 0.4f;
+
+            Mesh* cylinder = m_Renderer->GetPrimitiveMesh(3); // Cylinder
+            if (cylinder)
+            {
+                m_Renderer->DrawMesh(*cylinder, material, world);
+            }
+        }
+
+        // Draw a cone
+        {
+            DirectX::XMMATRIX world =
+                DirectX::XMMatrixTranslation(0.0f, 0.0f, 3.0f);
+            MaterialData material = CreateColoredMaterial(0.8f, 0.6f, 0.1f);
+            material.Roughness = 0.6f;
+
+            Mesh* cone = m_Renderer->GetPrimitiveMesh(4); // Cone
+            if (cone)
+            {
+                m_Renderer->DrawMesh(*cone, material, world);
+            }
         }
     }
 
@@ -496,6 +624,82 @@ namespace SM
         }
 
         std::cout << "\n=== Memory & Resource Test Complete ===" << std::endl;
+#endif
+    }
+
+    bool Engine::InitializeRenderer()
+    {
+        if (!m_Window)
+        {
+            std::cerr << "[Engine] Cannot initialize renderer: Window not created" << std::endl;
+            return false;
+        }
+
+        m_Renderer = std::make_unique<Renderer>();
+
+        bool result = m_Renderer->Initialize(
+            m_Window->GetHandle(),
+            static_cast<uint32_t>(m_Config.windowWidth),
+            static_cast<uint32_t>(m_Config.windowHeight),
+            m_Config.vsync
+        );
+
+        if (result)
+        {
+            std::cout << "[Engine] DX12 Renderer initialized successfully" << std::endl;
+            std::cout << "[Engine] Render target: " << m_Renderer->GetWidth()
+                      << "x" << m_Renderer->GetHeight() << std::endl;
+        }
+
+        return result;
+    }
+
+    void Engine::OnWindowResize(uint32_t width, uint32_t height)
+    {
+        if (m_Renderer && m_Renderer->IsInitialized())
+        {
+            m_Renderer->Resize(width, height);
+            std::cout << "[Engine] Window resized to " << width << "x" << height << std::endl;
+        }
+    }
+
+    void Engine::TestRenderer()
+    {
+#if defined(_DEBUG)
+        if (!m_Renderer || !m_Renderer->IsInitialized())
+        {
+            return;
+        }
+
+        std::cout << "\n=== Renderer Test Start ===" << std::endl;
+
+        std::cout << "Renderer initialized: " << (m_Renderer->IsInitialized() ? "yes" : "no") << std::endl;
+        std::cout << "Render target size: " << m_Renderer->GetWidth() << "x" << m_Renderer->GetHeight() << std::endl;
+        std::cout << "Aspect ratio: " << m_Renderer->GetAspectRatio() << std::endl;
+
+        // Test primitive mesh access
+        std::cout << "\nPrimitive meshes available:" << std::endl;
+        const char* meshNames[] = { "Cube", "Sphere", "Plane", "Cylinder", "Cone", "Quad" };
+        for (uint32_t i = 0; i < 6; ++i)
+        {
+            Mesh* mesh = m_Renderer->GetPrimitiveMesh(i);
+            if (mesh && mesh->IsValid())
+            {
+                std::cout << "  " << meshNames[i] << ": "
+                          << mesh->GetVertexCount() << " vertices, "
+                          << mesh->GetIndexCount() << " indices" << std::endl;
+            }
+        }
+
+        // Test camera
+        const Camera& camera = m_Renderer->GetCamera();
+        std::cout << "\nCamera position: ("
+                  << camera.Position.x << ", "
+                  << camera.Position.y << ", "
+                  << camera.Position.z << ")" << std::endl;
+        std::cout << "Camera FOV: " << DirectX::XMConvertToDegrees(camera.FieldOfView) << " degrees" << std::endl;
+
+        std::cout << "\n=== Renderer Test Complete ===" << std::endl;
 #endif
     }
 

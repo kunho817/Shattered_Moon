@@ -89,6 +89,16 @@ target_sources(ShatteredMoonCore PRIVATE
 
     # ECS
     src/ecs/World.cpp
+
+    # Renderer (DX12)
+    src/renderer/DX12Core.cpp
+    src/renderer/CommandList.cpp
+    src/renderer/GPUBuffer.cpp
+    src/renderer/Texture.cpp
+    src/renderer/RootSignature.cpp
+    src/renderer/PipelineState.cpp
+    src/renderer/Mesh.cpp
+    src/renderer/Renderer.cpp
 )
 
 target_include_directories(ShatteredMoonCore PUBLIC

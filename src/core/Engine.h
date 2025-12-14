@@ -19,6 +19,7 @@ namespace SM
     class World;
     class MemoryManager;
     class ResourceManager;
+    class Renderer;
 
     /**
      * @brief Engine configuration structure
@@ -110,6 +111,12 @@ namespace SM
         ResourceManager& GetResourceManager();
 
         /**
+         * @brief Get the renderer
+         * @return Pointer to the renderer, nullptr if not initialized
+         */
+        Renderer* GetRenderer() const { return m_Renderer.get(); }
+
+        /**
          * @brief Get the time elapsed since last frame (delta time)
          * @return Delta time in seconds
          */
@@ -148,6 +155,11 @@ namespace SM
         void Render();
 
         /**
+         * @brief Render test scene with primitive meshes
+         */
+        void RenderTestScene();
+
+        /**
          * @brief Calculate timing information (delta time, FPS)
          */
         void CalculateTiming();
@@ -179,6 +191,24 @@ namespace SM
          */
         void TestMemoryAndResources();
 
+        /**
+         * @brief Initialize the DX12 renderer
+         * @return true if successful
+         */
+        bool InitializeRenderer();
+
+        /**
+         * @brief Handle window resize event
+         * @param width New width
+         * @param height New height
+         */
+        void OnWindowResize(uint32_t width, uint32_t height);
+
+        /**
+         * @brief Test renderer with primitive meshes (debug builds only)
+         */
+        void TestRenderer();
+
     private:
         // Engine state
         bool m_IsRunning = false;
@@ -196,6 +226,7 @@ namespace SM
         // Core systems
         std::unique_ptr<Window> m_Window;
         std::unique_ptr<World> m_World;
+        std::unique_ptr<Renderer> m_Renderer;
 
         // Configuration
         EngineConfig m_Config;
