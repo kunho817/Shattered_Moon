@@ -209,6 +209,11 @@ namespace SM
          */
         void TestRenderer();
 
+        /**
+         * @brief Test PCG noise and heightmap generation (debug builds only)
+         */
+        void TestPCG();
+
     private:
         // Engine state
         bool m_IsRunning = false;

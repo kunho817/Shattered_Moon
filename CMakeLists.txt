@@ -99,6 +99,12 @@ target_sources(ShatteredMoonCore PRIVATE
     src/renderer/PipelineState.cpp
     src/renderer/Mesh.cpp
     src/renderer/Renderer.cpp
+
+    # PCG (Procedural Content Generation)
+    src/pcg/Noise.cpp
+    src/pcg/FBM.cpp
+    src/pcg/HeightmapGenerator.cpp
+    src/pcg/Biome.cpp
 )
 
 target_include_directories(ShatteredMoonCore PUBLIC

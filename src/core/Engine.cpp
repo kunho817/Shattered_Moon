@@ -5,8 +5,10 @@
 #include "core/FileSystem.h"
 #include "ecs/ECS.h"
 #include "renderer/Renderer.h"
+#include "pcg/PCG.h"
 
 #include <iostream>
+#include <iomanip>
 
 namespace SM
 {
@@ -367,6 +369,9 @@ namespace SM
 
         // Test memory and resource systems
         TestMemoryAndResources();
+
+        // Test PCG system
+        TestPCG();
     }
 
     void Engine::TestECS()
@@ -700,6 +705,228 @@ namespace SM
         std::cout << "Camera FOV: " << DirectX::XMConvertToDegrees(camera.FieldOfView) << " degrees" << std::endl;
 
         std::cout << "\n=== Renderer Test Complete ===" << std::endl;
+#endif
+    }
+
+    void Engine::TestPCG()
+    {
+#if defined(_DEBUG)
+        std::cout << "\n=== PCG (Procedural Content Generation) Test Start ===" << std::endl;
+
+        // Test 1: Basic Noise Algorithms
+        std::cout << "\n--- Noise Algorithm Test ---" << std::endl;
+        {
+            const uint32_t testSeed = 12345;
+
+            // Perlin Noise
+            PCG::PerlinNoise perlin(testSeed);
+            float perlinValue = perlin.Sample(1.5f, 2.5f);
+            std::cout << "Perlin Noise at (1.5, 2.5): " << std::fixed << std::setprecision(4) << perlinValue << std::endl;
+
+            // Simplex Noise
+            PCG::SimplexNoise simplex(testSeed);
+            float simplexValue = simplex.Sample(1.5f, 2.5f);
+            std::cout << "Simplex Noise at (1.5, 2.5): " << std::fixed << std::setprecision(4) << simplexValue << std::endl;
+
+            // Worley Noise
+            PCG::WorleyNoise worley(testSeed);
+            float worleyValue = worley.Sample(1.5f, 2.5f);
+            std::cout << "Worley Noise at (1.5, 2.5): " << std::fixed << std::setprecision(4) << worleyValue << std::endl;
+
+            // Value Noise
+            PCG::ValueNoise value(testSeed);
+            float valueNoise = value.Sample(1.5f, 2.5f);
+            std::cout << "Value Noise at (1.5, 2.5): " << std::fixed << std::setprecision(4) << valueNoise << std::endl;
+
+            // Seed reproducibility test
+            PCG::PerlinNoise perlin2(testSeed);
+            float perlinValue2 = perlin2.Sample(1.5f, 2.5f);
+            std::cout << "Seed reproducibility test: " << (std::abs(perlinValue - perlinValue2) < 0.0001f ? "PASSED" : "FAILED") << std::endl;
+        }
+
+        // Test 2: FBM (Fractal Brownian Motion)
+        std::cout << "\n--- FBM Test ---" << std::endl;
+        {
+            PCG::PerlinNoise baseNoise(42);
+            PCG::FBM fbm(&baseNoise);
+
+            PCG::FBMSettings settings;
+            settings.Octaves = 6;
+            settings.Frequency = 0.1f;
+            settings.Lacunarity = 2.0f;
+            settings.Persistence = 0.5f;
+
+            // Standard FBM
+            float fbmValue = fbm.Sample(5.0f, 5.0f, settings);
+            std::cout << "FBM at (5.0, 5.0): " << std::fixed << std::setprecision(4) << fbmValue << std::endl;
+
+            // Ridged FBM
+            float ridgedValue = fbm.Ridged(5.0f, 5.0f, settings);
+            std::cout << "Ridged FBM at (5.0, 5.0): " << std::fixed << std::setprecision(4) << ridgedValue << std::endl;
+
+            // Turbulence
+            float turbulenceValue = fbm.Turbulence(5.0f, 5.0f, settings);
+            std::cout << "Turbulence at (5.0, 5.0): " << std::fixed << std::setprecision(4) << turbulenceValue << std::endl;
+
+            // Billow
+            float billowValue = fbm.Billow(5.0f, 5.0f, settings);
+            std::cout << "Billow at (5.0, 5.0): " << std::fixed << std::setprecision(4) << billowValue << std::endl;
+
+            // Domain Warped
+            float warpedValue = fbm.WarpedSample(5.0f, 5.0f, settings, 0.5f);
+            std::cout << "Domain Warped at (5.0, 5.0): " << std::fixed << std::setprecision(4) << warpedValue << std::endl;
+        }
+
+        // Test 3: Heightmap Generation
+        std::cout << "\n--- Heightmap Generation Test ---" << std::endl;
+        {
+            PCG::HeightmapSettings settings;
+            settings.Seed = 54321;
+            settings.Width = 64;
+            settings.Height = 64;
+            settings.Noise = PCG::FBMSettings::Terrain();
+            settings.MinHeight = 0.0f;
+            settings.MaxHeight = 100.0f;
+            settings.ApplyFalloffMap = true;
+
+            PCG::HeightmapGenerator generator;
+            std::vector<float> heightmap = generator.Generate(settings);
+
+            // Calculate statistics
+            float minH = heightmap[0], maxH = heightmap[0], avgH = 0.0f;
+            for (float h : heightmap)
+            {
+                minH = std::min(minH, h);
+                maxH = std::max(maxH, h);
+                avgH += h;
+            }
+            avgH /= static_cast<float>(heightmap.size());
+
+            std::cout << "Generated heightmap: " << settings.Width << "x" << settings.Height << std::endl;
+            std::cout << "Height range: [" << std::fixed << std::setprecision(2)
+                      << minH << ", " << maxH << "]" << std::endl;
+            std::cout << "Average height: " << avgH << std::endl;
+
+            // ASCII visualization of a small section (8x8 from center)
+            std::cout << "\nHeightmap preview (8x8 center region):" << std::endl;
+            const char* shades = " .:-=+*#%@";
+            int startX = settings.Width / 2 - 4;
+            int startY = settings.Height / 2 - 4;
+
+            for (int y = startY; y < startY + 8; ++y)
+            {
+                std::cout << "  ";
+                for (int x = startX; x < startX + 8; ++x)
+                {
+                    float h = heightmap[y * settings.Width + x];
+                    float normalized = (h - minH) / (maxH - minH + 0.001f);
+                    int shadeIdx = static_cast<int>(normalized * 9.0f);
+                    shadeIdx = std::clamp(shadeIdx, 0, 9);
+                    std::cout << shades[shadeIdx] << shades[shadeIdx];
+                }
+                std::cout << std::endl;
+            }
+
+            // Test erosion
+            std::cout << "\nApplying hydraulic erosion (1000 iterations)..." << std::endl;
+            PCG::ErosionSettings erosionSettings;
+            erosionSettings.Iterations = 1000;
+            generator.ApplyErosion(heightmap, settings.Width, settings.Height, erosionSettings);
+
+            // Recalculate stats after erosion
+            minH = heightmap[0]; maxH = heightmap[0]; avgH = 0.0f;
+            for (float h : heightmap)
+            {
+                minH = std::min(minH, h);
+                maxH = std::max(maxH, h);
+                avgH += h;
+            }
+            avgH /= static_cast<float>(heightmap.size());
+            std::cout << "After erosion - Height range: [" << std::fixed << std::setprecision(2)
+                      << minH << ", " << maxH << "], Avg: " << avgH << std::endl;
+        }
+
+        // Test 4: Biome Classification
+        std::cout << "\n--- Biome System Test ---" << std::endl;
+        {
+            PCG::BiomeMap biomeMap;
+            std::cout << "Water level: " << biomeMap.GetWaterLevel() << std::endl;
+
+            // Test biome classification at different heights
+            float testHeights[] = {0.1f, 0.25f, 0.35f, 0.5f, 0.7f, 0.9f};
+            std::cout << "Biome classification by height:" << std::endl;
+            for (float h : testHeights)
+            {
+                PCG::BiomeType biome = biomeMap.GetBiome(h);
+                std::cout << "  Height " << std::fixed << std::setprecision(2)
+                          << h << " -> " << PCG::BiomeTypeToString(biome) << std::endl;
+            }
+
+            // Test biome with moisture
+            std::cout << "\nBiome classification with moisture:" << std::endl;
+            struct TestCase { float height; float moisture; };
+            TestCase testCases[] = {
+                {0.4f, 0.1f},  // Dry lowland
+                {0.4f, 0.5f},  // Medium moisture
+                {0.4f, 0.9f},  // Wet lowland
+                {0.7f, 0.5f},  // Highland
+            };
+
+            for (const auto& tc : testCases)
+            {
+                PCG::BiomeType biome = biomeMap.GetBiome(tc.height, tc.moisture);
+                float r, g, b, a;
+                biomeMap.GetBiomeColor(tc.height, tc.moisture, 0.5f, r, g, b, a);
+
+                std::cout << "  Height=" << std::fixed << std::setprecision(2) << tc.height
+                          << ", Moisture=" << tc.moisture
+                          << " -> " << PCG::BiomeTypeToString(biome)
+                          << " (Color: " << std::setprecision(2) << r << "," << g << "," << b << ")"
+                          << std::endl;
+            }
+
+            // Test biome data properties
+            const PCG::BiomeData& forestData = biomeMap.GetBiomeData(PCG::BiomeType::Forest);
+            std::cout << "\nForest biome properties:" << std::endl;
+            std::cout << "  Name: " << forestData.Name << std::endl;
+            std::cout << "  Height range: [" << forestData.MinHeight << ", " << forestData.MaxHeight << "]" << std::endl;
+            std::cout << "  Movement speed: " << forestData.MovementSpeed << std::endl;
+            std::cout << "  Resource density: " << forestData.ResourceDensity << std::endl;
+        }
+
+        // Test 5: Noise Factory
+        std::cout << "\n--- Noise Factory Test ---" << std::endl;
+        {
+            auto perlin = PCG::NoiseFactory::Create(PCG::NoiseFactory::NoiseType::Perlin, 100);
+            auto simplex = PCG::NoiseFactory::Create(PCG::NoiseFactory::NoiseType::Simplex, 100);
+            auto worley = PCG::NoiseFactory::Create(PCG::NoiseFactory::NoiseType::Worley, 100);
+
+            std::cout << "Created noise generators via factory:" << std::endl;
+            std::cout << "  Perlin seed: " << perlin->GetSeed() << std::endl;
+            std::cout << "  Simplex seed: " << simplex->GetSeed() << std::endl;
+            std::cout << "  Worley seed: " << worley->GetSeed() << std::endl;
+        }
+
+        // Test 6: FBM Presets
+        std::cout << "\n--- FBM Presets Test ---" << std::endl;
+        {
+            auto terrainFBM = PCG::FBMPresets::CreateTerrainFBM(777);
+            auto cloudFBM = PCG::FBMPresets::CreateCloudFBM(888);
+            auto detailFBM = PCG::FBMPresets::CreateDetailFBM(999);
+
+            PCG::FBMSettings settings = PCG::FBMSettings::Terrain();
+
+            float terrainValue = terrainFBM->Sample(10.0f, 10.0f, settings);
+            float cloudValue = cloudFBM->Sample(10.0f, 10.0f, PCG::FBMSettings::Clouds());
+            float detailValue = detailFBM->Sample(10.0f, 10.0f, settings);
+
+            std::cout << "FBM preset samples at (10.0, 10.0):" << std::endl;
+            std::cout << "  Terrain: " << std::fixed << std::setprecision(4) << terrainValue << std::endl;
+            std::cout << "  Cloud: " << cloudValue << std::endl;
+            std::cout << "  Detail: " << detailValue << std::endl;
+        }
+
+        std::cout << "\n=== PCG Test Complete ===" << std::endl;
 #endif
     }
 
