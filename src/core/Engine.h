@@ -17,6 +17,8 @@ namespace SM
     // Forward declarations
     class Window;
     class World;
+    class MemoryManager;
+    class ResourceManager;
 
     /**
      * @brief Engine configuration structure
@@ -30,6 +32,14 @@ namespace SM
         int windowHeight = 720;
         bool vsync = true;
         bool fullscreen = false;
+
+        // Memory configuration
+        size_t frameStackSize = 4 * 1024 * 1024;       // 4MB per-frame allocations
+        size_t persistentStackSize = 16 * 1024 * 1024; // 16MB persistent allocations
+
+        // Resource configuration
+        uint32_t maxAsyncResourceLoads = 4;
+        bool enableHotReload = true; // Only in debug builds
     };
 
     /**
@@ -88,6 +98,18 @@ namespace SM
         World* GetWorld() const { return m_World.get(); }
 
         /**
+         * @brief Get the memory manager
+         * @return Reference to the memory manager
+         */
+        MemoryManager& GetMemoryManager();
+
+        /**
+         * @brief Get the resource manager
+         * @return Reference to the resource manager
+         */
+        ResourceManager& GetResourceManager();
+
+        /**
          * @brief Get the time elapsed since last frame (delta time)
          * @return Delta time in seconds
          */
@@ -131,6 +153,18 @@ namespace SM
         void CalculateTiming();
 
         /**
+         * @brief Initialize the memory management system
+         * @return true if successful
+         */
+        bool InitializeMemory();
+
+        /**
+         * @brief Initialize the resource management system
+         * @return true if successful
+         */
+        bool InitializeResources();
+
+        /**
          * @brief Initialize the ECS system and register components
          */
         void InitializeECS();
@@ -139,6 +173,11 @@ namespace SM
          * @brief Run ECS tests (debug builds only)
          */
         void TestECS();
+
+        /**
+         * @brief Test memory and resource systems (debug builds only)
+         */
+        void TestMemoryAndResources();
 
     private:
         // Engine state

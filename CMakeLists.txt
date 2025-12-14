@@ -82,6 +82,10 @@ target_sources(ShatteredMoonCore PRIVATE
     # Core
     src/core/Engine.cpp
     src/core/Window.cpp
+    src/core/Memory.cpp
+    src/core/FileSystem.cpp
+    src/core/AssetLoader.cpp
+    src/core/ResourceManager.cpp
 
     # ECS
     src/ecs/World.cpp
