@@ -11,6 +11,8 @@
 #include "gameplay/InputAction.h"
 #include "gameplay/Camera.h"
 #include "gameplay/CameraController.h"
+#include "editor/EditorUI.h"
+#include "editor/ConsolePanel.h"
 
 #include <iostream>
 #include <iomanip>
@@ -90,6 +92,13 @@ namespace SM
             m_TerrainEnabled = false;
         }
 
+        // Initialize Editor System
+        if (!InitializeEditor())
+        {
+            std::cerr << "[Engine] Failed to initialize editor system" << std::endl;
+            // Non-fatal: continue without editor
+        }
+
         // Initialize timing
         m_StartTime = std::chrono::high_resolution_clock::now();
         m_LastFrameTime = m_StartTime;
@@ -158,7 +167,14 @@ namespace SM
 
         // Shutdown in reverse order of initialization
 
-        // Shutdown Terrain system first
+        // Shutdown Editor system first
+        if (m_EditorUI)
+        {
+            m_EditorUI->Shutdown();
+            m_EditorUI.reset();
+        }
+
+        // Shutdown Terrain system
         if (m_TerrainRenderer)
         {
             m_TerrainRenderer->Shutdown();
@@ -236,6 +252,8 @@ namespace SM
 
     void Engine::Update(float deltaTime)
     {
+        auto updateStart = std::chrono::high_resolution_clock::now();
+
         // Update Input (must be first to capture this frame's input)
         UpdateInput(deltaTime);
 
@@ -253,6 +271,10 @@ namespace SM
 
         // Clear frame stack at end of frame
         MemoryManager::Get().ClearFrameStack();
+
+        // Track update time for stats
+        auto updateEnd = std::chrono::high_resolution_clock::now();
+        m_UpdateTime = std::chrono::duration<float, std::milli>(updateEnd - updateStart).count();
     }
 
     void Engine::Render()
@@ -261,6 +283,8 @@ namespace SM
         {
             return;
         }
+
+        auto renderStart = std::chrono::high_resolution_clock::now();
 
         // Begin frame
         m_Renderer->BeginFrame();
@@ -285,13 +309,24 @@ namespace SM
             RenderTestScene();
         }
 
-        // TODO: Render UI (ImGui)
+        // Render Editor UI (ImGui)
+        RenderEditor();
 
         // End frame
         m_Renderer->EndFrame();
 
         // Present to screen
         m_Renderer->Present();
+
+        // Track render time for stats
+        auto renderEnd = std::chrono::high_resolution_clock::now();
+        m_RenderTime = std::chrono::duration<float, std::milli>(renderEnd - renderStart).count();
+
+        // Update editor stats
+        if (m_EditorUI)
+        {
+            m_EditorUI->UpdateStats(m_DeltaTime, m_UpdateTime, m_RenderTime);
+        }
     }
 
     void Engine::RenderTestScene()
@@ -1158,13 +1193,24 @@ namespace SM
         // Update input system at start of frame
         Input::Get().Update();
 
-        // Toggle between FPS and Orbit camera with F2
         Input& input = Input::Get();
 
-        if (input.IsKeyPressed(KeyCode::F2))
+        // Toggle editor visibility with F1
+        if (input.IsKeyPressed(KeyCode::F1))
+        {
+            ToggleEditor();
+        }
+
+        // Check if editor wants input (prioritize editor)
+        bool editorWantsMouse = m_EditorUI && m_EditorUI->WantCaptureMouse();
+        bool editorWantsKeyboard = m_EditorUI && m_EditorUI->WantCaptureKeyboard();
+
+        // Toggle between FPS and Orbit camera with F2 (only if editor doesn't want keyboard)
+        if (!editorWantsKeyboard && input.IsKeyPressed(KeyCode::F2))
         {
             m_UseFPSCamera = !m_UseFPSCamera;
             std::cout << "[Engine] Camera mode: " << (m_UseFPSCamera ? "FPS" : "Orbit") << std::endl;
+            ConsolePanel::Get().Log(m_UseFPSCamera ? "Camera mode: FPS" : "Camera mode: Orbit", LogLevel::Info);
 
             // Disable auto-rotation when switching to FPS
             if (m_UseFPSCamera && m_OrbitController)
@@ -1184,14 +1230,29 @@ namespace SM
             }
         }
 
-        // Update appropriate camera controller
-        if (m_UseFPSCamera && m_FPSController)
+        // Toggle console with grave/tilde key
+        if (input.IsKeyPressed(KeyCode::Grave))
         {
-            m_FPSController->Update(deltaTime);
+            ConsolePanel::Get().ToggleVisible();
         }
-        else if (m_OrbitController)
+
+        // Toggle stats panel with F3
+        if (input.IsKeyPressed(KeyCode::F3) && m_EditorUI)
         {
-            m_OrbitController->Update(deltaTime);
+            m_EditorUI->GetStatsPanel().ToggleVisible();
+        }
+
+        // Update camera controllers only if editor doesn't want input
+        if (!editorWantsMouse)
+        {
+            if (m_UseFPSCamera && m_FPSController)
+            {
+                m_FPSController->Update(deltaTime);
+            }
+            else if (m_OrbitController)
+            {
+                m_OrbitController->Update(deltaTime);
+            }
         }
 
         // Update camera aspect ratio on window resize
@@ -1212,6 +1273,82 @@ namespace SM
                 // Request shutdown if not capturing
                 RequestShutdown();
             }
+        }
+    }
+
+    // ============================================================================
+    // Editor System
+    // ============================================================================
+
+    bool Engine::InitializeEditor()
+    {
+        if (!m_Renderer || !m_Renderer->IsInitialized() || !m_Window)
+        {
+            std::cerr << "[Engine] Cannot initialize editor: Renderer or Window not ready" << std::endl;
+            return false;
+        }
+
+        std::cout << "[Engine] Initializing editor system..." << std::endl;
+
+        m_EditorUI = std::make_unique<EditorUI>();
+
+        // Initialize editor with window handle and renderer
+        bool result = m_EditorUI->Initialize(m_Window->GetHandle(), m_Renderer.get());
+
+        if (result)
+        {
+            std::cout << "[Engine] Editor system initialized successfully!" << std::endl;
+            ConsolePanel::Get().Log("Engine initialized", LogLevel::Info);
+            ConsolePanel::Get().Log("Press F1 to toggle editor visibility", LogLevel::Info);
+            ConsolePanel::Get().Log("Press F2 to toggle camera mode (FPS/Orbit)", LogLevel::Info);
+            ConsolePanel::Get().Log("Press F3 to toggle stats panel", LogLevel::Info);
+        }
+
+        return result;
+    }
+
+    void Engine::RenderEditor()
+    {
+        if (!m_EditorUI || !m_Renderer)
+        {
+            return;
+        }
+
+        // Begin ImGui frame
+        m_EditorUI->BeginFrame();
+
+        // Draw editor UI
+        m_EditorUI->Draw(
+            m_World.get(),
+            m_GameCamera.get(),
+            m_FPSController.get(),
+            m_OrbitController.get(),
+            m_ChunkManager.get()
+        );
+
+        // End ImGui frame
+        m_EditorUI->EndFrame();
+
+        // Render ImGui draw data
+        ID3D12GraphicsCommandList* commandList = m_Renderer->GetCommandList();
+        if (commandList)
+        {
+            m_EditorUI->Render(commandList);
+        }
+    }
+
+    bool Engine::IsEditorVisible() const
+    {
+        return m_EditorUI && m_EditorUI->IsVisible();
+    }
+
+    void Engine::ToggleEditor()
+    {
+        if (m_EditorUI)
+        {
+            m_EditorUI->ToggleVisible();
+            m_EditorVisible = m_EditorUI->IsVisible();
+            std::cout << "[Engine] Editor " << (m_EditorVisible ? "shown" : "hidden") << std::endl;
         }
     }
 

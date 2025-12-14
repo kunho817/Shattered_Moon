@@ -117,6 +117,15 @@ target_sources(ShatteredMoonCore PRIVATE
     src/gameplay/InputAction.cpp
     src/gameplay/Camera.cpp
     src/gameplay/CameraController.cpp
+
+    # Editor (ImGui-based)
+    src/editor/ImGuiManager.cpp
+    src/editor/EditorUI.cpp
+    src/editor/StatsPanel.cpp
+    src/editor/CameraPanel.cpp
+    src/editor/PCGPanel.cpp
+    src/editor/ECSPanel.cpp
+    src/editor/ConsolePanel.cpp
 )
 
 target_include_directories(ShatteredMoonCore PUBLIC

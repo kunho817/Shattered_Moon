@@ -19,6 +19,12 @@ namespace PCG
     class TerrainRenderer;
 }
 
+// Forward declaration for Editor
+namespace SM
+{
+    class EditorUI;
+}
+
 // Forward declarations for gameplay systems
 namespace SM
 {
@@ -274,6 +280,34 @@ namespace SM
          */
         OrbitCameraController* GetOrbitController() const { return m_OrbitController.get(); }
 
+        /**
+         * @brief Get the editor UI
+         * @return Pointer to editor UI (may be nullptr)
+         */
+        EditorUI* GetEditorUI() const { return m_EditorUI.get(); }
+
+        /**
+         * @brief Check if editor is visible
+         */
+        bool IsEditorVisible() const;
+
+        /**
+         * @brief Toggle editor visibility
+         */
+        void ToggleEditor();
+
+    private:
+        /**
+         * @brief Initialize the editor system
+         * @return true if successful
+         */
+        bool InitializeEditor();
+
+        /**
+         * @brief Render editor UI
+         */
+        void RenderEditor();
+
     private:
         // Engine state
         bool m_IsRunning = false;
@@ -303,6 +337,14 @@ namespace SM
         std::unique_ptr<FPSCameraController> m_FPSController;
         std::unique_ptr<OrbitCameraController> m_OrbitController;
         bool m_UseFPSCamera = true;  // Toggle between FPS and Orbit camera
+
+        // Editor system
+        std::unique_ptr<EditorUI> m_EditorUI;
+        bool m_EditorVisible = true;
+
+        // Timing for stats
+        float m_UpdateTime = 0.0f;
+        float m_RenderTime = 0.0f;
 
         // Configuration
         EngineConfig m_Config;
