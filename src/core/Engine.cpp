@@ -1,5 +1,6 @@
 #include "core/Engine.h"
 #include "core/Window.h"
+#include "ecs/ECS.h"
 
 #include <iostream>
 
@@ -38,6 +39,10 @@ namespace SM
         {
             return false;
         }
+
+        // Initialize ECS World
+        m_World = std::make_unique<World>();
+        InitializeECS();
 
         // Initialize timing
         m_StartTime = std::chrono::high_resolution_clock::now();
@@ -94,6 +99,13 @@ namespace SM
 
         // Shutdown in reverse order of initialization
 
+        // Shutdown ECS
+        if (m_World)
+        {
+            m_World->ShutdownSystems();
+            m_World.reset();
+        }
+
         // Shutdown window
         if (m_Window)
         {
@@ -139,12 +151,15 @@ namespace SM
 
     void Engine::Update(float deltaTime)
     {
-        // TODO: Update ECS systems
+        // Update ECS systems
+        if (m_World)
+        {
+            m_World->Update(deltaTime);
+        }
+
         // TODO: Update physics
         // TODO: Update audio
         // TODO: Update input
-
-        (void)deltaTime; // Suppress unused parameter warning for now
     }
 
     void Engine::Render()
@@ -159,6 +174,111 @@ namespace SM
         {
             m_Window->Clear(0.1f, 0.1f, 0.2f); // Dark blue background
         }
+    }
+
+    void Engine::InitializeECS()
+    {
+        if (!m_World)
+        {
+            return;
+        }
+
+        // Register basic component types
+        m_World->RegisterComponent<TransformComponent>();
+        m_World->RegisterComponent<MeshComponent>();
+        m_World->RegisterComponent<MaterialComponent>();
+        m_World->RegisterComponent<TagComponent>();
+        m_World->RegisterComponent<VelocityComponent>();
+        m_World->RegisterComponent<CameraComponent>();
+        m_World->RegisterComponent<LightComponent>();
+
+        // Initialize systems
+        m_World->InitializeSystems();
+
+        // ECS Test: Create some test entities
+        TestECS();
+    }
+
+    void Engine::TestECS()
+    {
+        if (!m_World)
+        {
+            return;
+        }
+
+#if defined(_DEBUG)
+        std::cout << "=== ECS Test Start ===" << std::endl;
+
+        // Test 1: Create entity
+        EntityID entity1 = m_World->CreateEntity("TestCube");
+        std::cout << "Created entity: " << entity1 << std::endl;
+
+        // Test 2: Add components
+        m_World->AddComponent(entity1, TransformComponent{
+            Vector3(0.0f, 0.0f, 5.0f),    // Position
+            Quaternion::Identity(),        // Rotation
+            Vector3::One()                 // Scale
+        });
+
+        m_World->AddComponent(entity1, MeshComponent{ PrimitiveMesh::Cube });
+        m_World->AddComponent(entity1, MaterialComponent{ Color::Blue() });
+
+        std::cout << "Added Transform, Mesh, Material components" << std::endl;
+
+        // Test 3: Query component
+        TransformComponent& transform = m_World->GetComponent<TransformComponent>(entity1);
+        std::cout << "Entity position: ("
+                  << transform.Position.x << ", "
+                  << transform.Position.y << ", "
+                  << transform.Position.z << ")" << std::endl;
+
+        // Test 4: HasComponent check
+        bool hasTransform = m_World->HasComponent<TransformComponent>(entity1);
+        bool hasCamera = m_World->HasComponent<CameraComponent>(entity1);
+        std::cout << "Has Transform: " << (hasTransform ? "true" : "false") << std::endl;
+        std::cout << "Has Camera: " << (hasCamera ? "true" : "false") << std::endl;
+
+        // Test 5: Create more entities
+        EntityID entity2 = m_World->CreateEntity("TestSphere");
+        m_World->AddComponent(entity2, TransformComponent{ Vector3(3.0f, 0.0f, 5.0f) });
+        m_World->AddComponent(entity2, MeshComponent{ PrimitiveMesh::Sphere });
+        m_World->AddComponent(entity2, MaterialComponent{ Color::Red() });
+
+        EntityID entity3 = m_World->CreateEntity("MainCamera");
+        m_World->AddComponent(entity3, TransformComponent{ Vector3(0.0f, 2.0f, -5.0f) });
+        m_World->AddComponent(entity3, CameraComponent{});
+
+        std::cout << "Total entities: " << m_World->GetEntityCount() << std::endl;
+
+        // Test 6: ForEach query
+        std::cout << "Entities with Transform and Mesh:" << std::endl;
+        m_World->ForEach<TransformComponent, MeshComponent>(
+            [](EntityID entity, TransformComponent& t, MeshComponent& m) {
+                std::cout << "  Entity " << entity << " - MeshID: " << m.MeshId
+                          << " at (" << t.Position.x << ", " << t.Position.y << ", " << t.Position.z << ")"
+                          << std::endl;
+            }
+        );
+
+        // Test 7: Find entity by name
+        EntityID found = m_World->FindEntityByName("TestSphere");
+        std::cout << "Found 'TestSphere' at entity ID: " << found << std::endl;
+
+        // Test 8: Remove component
+        m_World->RemoveComponent<MaterialComponent>(entity1);
+        bool hasMaterial = m_World->HasComponent<MaterialComponent>(entity1);
+        std::cout << "After removal, entity1 has Material: " << (hasMaterial ? "true" : "false") << std::endl;
+
+        // Test 9: IsAlive check
+        std::cout << "Entity1 is alive: " << (m_World->IsAlive(entity1) ? "true" : "false") << std::endl;
+
+        // Test 10: Destroy entity
+        m_World->DestroyEntity(entity2);
+        std::cout << "After destroying entity2, total entities: " << m_World->GetEntityCount() << std::endl;
+        std::cout << "Entity2 is alive: " << (m_World->IsAlive(entity2) ? "true" : "false") << std::endl;
+
+        std::cout << "=== ECS Test Complete ===" << std::endl;
+#endif
     }
 
 } // namespace SM

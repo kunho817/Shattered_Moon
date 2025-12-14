@@ -79,8 +79,12 @@ target_link_libraries(imgui PUBLIC
 add_library(ShatteredMoonCore STATIC)
 
 target_sources(ShatteredMoonCore PRIVATE
+    # Core
     src/core/Engine.cpp
     src/core/Window.cpp
+
+    # ECS
+    src/ecs/World.cpp
 )
 
 target_include_directories(ShatteredMoonCore PUBLIC

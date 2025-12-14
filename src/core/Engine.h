@@ -16,6 +16,7 @@ namespace SM
 {
     // Forward declarations
     class Window;
+    class World;
 
     /**
      * @brief Engine configuration structure
@@ -81,6 +82,12 @@ namespace SM
         Window* GetWindow() const { return m_Window.get(); }
 
         /**
+         * @brief Get the ECS world
+         * @return Pointer to the ECS world, nullptr if not initialized
+         */
+        World* GetWorld() const { return m_World.get(); }
+
+        /**
          * @brief Get the time elapsed since last frame (delta time)
          * @return Delta time in seconds
          */
@@ -123,6 +130,16 @@ namespace SM
          */
         void CalculateTiming();
 
+        /**
+         * @brief Initialize the ECS system and register components
+         */
+        void InitializeECS();
+
+        /**
+         * @brief Run ECS tests (debug builds only)
+         */
+        void TestECS();
+
     private:
         // Engine state
         bool m_IsRunning = false;
@@ -139,6 +156,7 @@ namespace SM
 
         // Core systems
         std::unique_ptr<Window> m_Window;
+        std::unique_ptr<World> m_World;
 
         // Configuration
         EngineConfig m_Config;
